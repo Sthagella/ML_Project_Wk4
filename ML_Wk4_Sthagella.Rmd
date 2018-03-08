@@ -1,0 +1,96 @@
+---
+title: "ML_Project"
+author: "Swetha Thagella"
+date: "March 7, 2018"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Project Goal
+The goal of the project is to predict the manner in which the 6 participants did the exercise which is identified by the "classe" variable in the training set.
+
+#Input data and initial exploration
+```{r }
+library(caret)
+library(rattle)
+training <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"))
+test <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"))
+#colnames(training) - not printing the result
+```
+There are 159 variables in the dataset excluding the independent variable "classe". Based on the cursory look, not all variables would be useful in predicting the "classe". The following steps involve cleaning the data in order to only retain relevant variables for the prediction models.
+
+
+#Cleaning data
+Removing NAs from training and test data sets
+```{r }
+trn <- training[, colSums(is.na(training)) == 0]
+tst <- test[, colSums(is.na(test)) == 0]
+```
+
+Removing Zero Covariates so only relevant variables/predictors can be used
+```{r }
+newtraining <- nearZeroVar(trn, saveMetrics = TRUE)
+nztraining <- trn[, newtraining$nzv == FALSE]
+```
+
+#Crossvalidation
+Splitting the training data into training and test so that the model that is developed can be tested prior to testing it with the final testing data set
+```{r }
+subtrain <- createDataPartition(y=nztraining$classe, p = 0.7, list = FALSE)
+train1 <- nztraining[subtrain, ] [c(-1,-2,-3,-4,-5)]
+test1 <- nztraining[-subtrain, ] [c(-1,-2,-3,-4,-5)]
+```
+
+#Algorithm Selection
+The data definitely seems to contain non-linear relationships. Since prediction with trees is more robust for regression as well as non-linear variable relationships, I tried the following three algorithms to evaluate the accuracy of each and then choose the best one.
+
+
+# 1. Decision Trees Model (rpart)
+```{r }
+set.seed(100)
+modfit_rp <- train(classe ~ ., data = train1, method = "rpart")
+print(modfit_rp$finalModel)
+plot(modfit_rp$finalModel, uniform = TRUE)
+rattle::fancyRpartPlot(modfit_rp$finalModel)
+pred_rp <- predict(modfit_rp, newdata = test1)
+conmatrix_rp <- confusionMatrix(pred_rp, test1$classe)
+conmatrix_rp
+```
+
+# 2. Random Forest Model 
+This includes 10 fold cross validation (as higher as per literature was not anymore significant)
+```{r }
+set.seed(100)
+modfit_rf <- train(classe ~ ., data = train1, method = "rf", trControl = trainControl(method = "cv", 10), ntree = 100)
+pred_rf <- predict(modfit_rf, newdata = test1)
+conmatrix_rf <- confusionMatrix(pred_rf, test1$classe)
+conmatrix_rf
+```
+
+# 3. Gradient Boosting Model including cross validation
+```{r }
+set.seed(100)
+modfit_gbm <- train(classe ~ ., data = train1, method = "gbm", verbose = FALSE, trControl = trainControl(method = "repeatedcv", 10, repeats = 1))
+print(modfit_gbm$finalModel)
+pred_gbm <- predict(modfit_gbm, newdata = test1)
+conmatrix_gbm <- confusionMatrix(pred_gbm, test1$classe)
+conmatrix_gbm
+```
+
+#Final Prediction
+Based on the highest prediction Accuracy of 0.9969, I chose to apply the Random Forest algorithm to the Test data set.The Accuracy of the Decision Tree Model was 0.4975 while the GBM model had an accuracy of 0.9869.The out of sample error of the Random Forest model is estimated to be 0.31% (1-0.9969).
+```{r }
+pred_rf_test <- predict(modfit_rf, newdata=tst)
+pred_rf_test
+```
+
+
+
+
+
